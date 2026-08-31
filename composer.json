@@ -1,6 +1,6 @@
 {
     "name": "cachewraith/laravel-template-structure",
-    "description": "Installer-style Laravel package that scaffolds a clean, scalable, OOAD-based, OWASP-hardened, versioned-API architecture into any Laravel 10/11/12 application.",
+    "description": "Installer-style Laravel package that scaffolds a clean, scalable, OOAD-based, OWASP-hardened, versioned-API architecture into any Laravel 10, 11, 12 or 13 application.",
     "type": "library",
     "license": "MIT",
     "keywords": [
