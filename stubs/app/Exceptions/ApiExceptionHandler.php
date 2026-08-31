@@ -154,7 +154,7 @@ final class ApiExceptionHandler
 
     private function wantsJson(Request $request): bool
     {
-        $prefix = trim((string) config('smn-template.api_version_prefix', 'api'), '/');
+        $prefix = trim((string) config('cachewraith-template.api_version_prefix', 'api'), '/');
 
         return $request->is($prefix.'/*') || $request->expectsJson();
     }

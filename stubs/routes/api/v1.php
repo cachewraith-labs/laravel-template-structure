@@ -12,14 +12,14 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 |
 | Loaded by bootstrap/app.php (Laravel 11+) or RouteServiceProvider (Laravel
-| 10) under the prefix "{smn-template.api_version_prefix}/v1" with the api
+| 10) under the prefix "{cachewraith-template.api_version_prefix}/v1" with the api
 | middleware group — so no prefix() or middleware('api') is repeated below.
 |
 | Open/Closed: once v1 is released this file is frozen. Introducing v2 is:
 |
 |     cp routes/api/v1.php routes/api/v2.php
 |     # point v2.php at App\Http\Controllers\Api\V2\*
-|     # add 'v2' to the versions array in config/smn-template.php
+|     # add 'v2' to the versions array in config/cachewraith-template.php
 |
 | v1 controllers, requests and resources stay untouched, so existing clients
 | keep working while new ones move over at their own pace.

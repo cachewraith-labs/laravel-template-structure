@@ -17,7 +17,7 @@ use Symfony\Component\HttpFoundation\Response;
  * whole point of applying it globally rather than per route.
  *
  * OWASP A02 (Security Misconfiguration) and A07 (XSS in any client that renders
- * a response). Values are configurable in config/smn-template.php; the defaults
+ * a response). Values are configurable in config/cachewraith-template.php; the defaults
  * assume a JSON-only API and deny everything.
  */
 final class SecurityHeaders
@@ -27,12 +27,12 @@ final class SecurityHeaders
         /** @var Response $response */
         $response = $next($request);
 
-        if (! config('smn-template.enable_security_headers', true)) {
+        if (! config('cachewraith-template.enable_security_headers', true)) {
             return $response;
         }
 
         /** @var array<string, string> $headers */
-        $headers = (array) config('smn-template.security_headers', []);
+        $headers = (array) config('cachewraith-template.security_headers', []);
 
         foreach ($headers as $header => $value) {
             // Never clobber a header a route set deliberately (a docs endpoint
@@ -45,7 +45,7 @@ final class SecurityHeaders
         // HSTS is only meaningful — and only safe — over an already-secure
         // connection. Sending it over http lets a proxy pin a policy the site
         // may not be able to honour.
-        if ($request->secure() && config('smn-template.hsts.enabled', true)) {
+        if ($request->secure() && config('cachewraith-template.hsts.enabled', true)) {
             $response->headers->set('Strict-Transport-Security', $this->hstsValue());
         }
 
@@ -85,20 +85,20 @@ final class SecurityHeaders
 
     private function isApiRequest(Request $request): bool
     {
-        $prefix = trim((string) config('smn-template.api_version_prefix', 'api'), '/');
+        $prefix = trim((string) config('cachewraith-template.api_version_prefix', 'api'), '/');
 
         return $request->is($prefix.'/*') || $request->expectsJson();
     }
 
     private function hstsValue(): string
     {
-        $value = 'max-age='.(int) config('smn-template.hsts.max_age', 31536000);
+        $value = 'max-age='.(int) config('cachewraith-template.hsts.max_age', 31536000);
 
-        if (config('smn-template.hsts.include_subdomains', true)) {
+        if (config('cachewraith-template.hsts.include_subdomains', true)) {
             $value .= '; includeSubDomains';
         }
 
-        if (config('smn-template.hsts.preload', false)) {
+        if (config('cachewraith-template.hsts.preload', false)) {
             $value .= '; preload';
         }
 

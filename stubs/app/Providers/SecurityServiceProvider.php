@@ -25,7 +25,7 @@ use Illuminate\Support\ServiceProvider;
  * every global security default in one place (Single Responsibility).
  *
  * Registered in bootstrap/providers.php (Laravel 11+) or config/app.php
- * (Laravel 10) by php artisan smn:install.
+ * (Laravel 10) by php artisan cachewraith:install.
  */
 final class SecurityServiceProvider extends ServiceProvider
 {
@@ -44,12 +44,12 @@ final class SecurityServiceProvider extends ServiceProvider
 
     /**
      * OWASP A04: never generate an http:// URL outside local development. Set
-     * smn-template.force_https explicitly if you terminate TLS at a proxy and
+     * cachewraith-template.force_https explicitly if you terminate TLS at a proxy and
      * have not configured TrustProxies yet.
      */
     private function forceHttps(): void
     {
-        $force = config('smn-template.force_https');
+        $force = config('cachewraith-template.force_https');
 
         if ($force === null) {
             $force = ! $this->app->environment(['local', 'testing']);
@@ -76,19 +76,19 @@ final class SecurityServiceProvider extends ServiceProvider
      */
     private function registerRateLimiters(): void
     {
-        if (! config('smn-template.enable_rate_limiting', true)) {
+        if (! config('cachewraith-template.enable_rate_limiting', true)) {
             return;
         }
 
         if (RateLimiter::limiter('api') === null) {
-            $attempts = (int) config('smn-template.rate_limits.api.attempts', 60);
+            $attempts = (int) config('cachewraith-template.rate_limits.api.attempts', 60);
 
             RateLimiter::for('api', static fn (Request $request): Limit => Limit::perMinute($attempts)
                 ->by($request->user()?->getAuthIdentifier() ?: $request->ip()));
         }
 
         if (RateLimiter::limiter('login') === null) {
-            $attempts = (int) config('smn-template.rate_limits.login.attempts', 5);
+            $attempts = (int) config('cachewraith-template.rate_limits.login.attempts', 5);
 
             // Keyed by credential and address together, so neither rotating
             // the email nor rotating the IP alone buys extra attempts.

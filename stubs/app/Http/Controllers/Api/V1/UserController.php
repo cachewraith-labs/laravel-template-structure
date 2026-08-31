@@ -100,8 +100,8 @@ final class UserController extends Controller
      */
     private function perPage(Request $request): int
     {
-        $default = (int) config('smn-template.pagination.per_page', 15);
-        $max = (int) config('smn-template.pagination.max_per_page', 100);
+        $default = (int) config('cachewraith-template.pagination.per_page', 15);
+        $max = (int) config('cachewraith-template.pagination.max_per_page', 100);
 
         return max(1, min($request->integer('per_page', $default), $max));
     }

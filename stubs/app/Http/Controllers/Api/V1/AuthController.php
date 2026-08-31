@@ -41,8 +41,8 @@ final class AuthController extends Controller
     public function login(LoginRequest $request): JsonResponse
     {
         $throttleKey = $this->throttleKey($request);
-        $limit = (int) config('smn-template.rate_limits.login.attempts', 5);
-        $decay = (int) config('smn-template.rate_limits.login.per_minutes', 1) * 60;
+        $limit = (int) config('cachewraith-template.rate_limits.login.attempts', 5);
+        $decay = (int) config('cachewraith-template.rate_limits.login.per_minutes', 1) * 60;
 
         if (RateLimiter::tooManyAttempts($throttleKey, $limit)) {
             $seconds = RateLimiter::availableIn($throttleKey);

@@ -15,7 +15,7 @@ return [
     |
     */
 
-    'enable_security_headers' => env('SMN_SECURITY_HEADERS', true),
+    'enable_security_headers' => env('CACHEWRAITH_SECURITY_HEADERS', true),
 
     /*
     |--------------------------------------------------------------------------
@@ -49,7 +49,7 @@ return [
     */
 
     'hsts' => [
-        'enabled' => env('SMN_HSTS', true),
+        'enabled' => env('CACHEWRAITH_HSTS', true),
         'max_age' => 31536000,
         'include_subdomains' => true,
         'preload' => false,
@@ -66,7 +66,7 @@ return [
     |
     */
 
-    'force_https' => env('SMN_FORCE_HTTPS', null),
+    'force_https' => env('CACHEWRAITH_FORCE_HTTPS', null),
 
     /*
     |--------------------------------------------------------------------------
@@ -79,7 +79,7 @@ return [
     |
     */
 
-    'enable_rate_limiting' => env('SMN_RATE_LIMITING', true),
+    'enable_rate_limiting' => env('CACHEWRAITH_RATE_LIMITING', true),
 
     'rate_limits' => [
         'api' => ['attempts' => 60, 'per_minutes' => 1],
@@ -98,7 +98,7 @@ return [
     |
     */
 
-    'api_version_prefix' => env('SMN_API_PREFIX', 'api'),
+    'api_version_prefix' => env('CACHEWRAITH_API_PREFIX', 'api'),
 
     'versions' => ['v1'],
 

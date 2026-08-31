@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Smn\LaravelTemplateStructure\Console;
+namespace Cachewraith\LaravelTemplateStructure\Console;
 
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
-use Smn\LaravelTemplateStructure\LaravelTemplateStructureServiceProvider as PackageProvider;
+use Cachewraith\LaravelTemplateStructure\LaravelTemplateStructureServiceProvider as PackageProvider;
 
 /**
  * Scaffolds the template structure into the host application.
@@ -23,10 +23,10 @@ use Smn\LaravelTemplateStructure\LaravelTemplateStructureServiceProvider as Pack
  */
 final class InstallCommand extends Command
 {
-    protected $signature = 'smn:install
+    protected $signature = 'cachewraith:install
                             {--force : Overwrite scaffolded files that already exist}';
 
-    protected $description = 'Scaffold the SMN clean/OOAD/OWASP versioned-API structure into this application';
+    protected $description = 'Scaffold the clean, OOAD-based, OWASP-hardened versioned-API structure into this application';
 
     /** @var array<int, string> */
     private array $created = [];
@@ -42,7 +42,7 @@ final class InstallCommand extends Command
 
     public function handle(Filesystem $files): int
     {
-        $this->components->info('Installing smn/laravel-template-structure...');
+        $this->components->info('Installing cachewraith/laravel-template-structure...');
 
         $this->publishStubs();
 
@@ -80,7 +80,7 @@ final class InstallCommand extends Command
     private function publishStubs(): void
     {
         $this->callSilently('vendor:publish', array_filter([
-            '--tag' => 'smn-template-stubs',
+            '--tag' => 'cachewraith-template-stubs',
             '--force' => $this->option('force') ? true : null,
         ]));
     }
@@ -91,7 +91,7 @@ final class InstallCommand extends Command
      */
     private function stubSource(Filesystem $files): string
     {
-        $published = base_path('stubs/smn-template');
+        $published = base_path('stubs/cachewraith-template');
 
         return $files->isDirectory($published.'/app')
             ? $published
@@ -483,7 +483,7 @@ final class InstallCommand extends Command
         }
 
         $contents = $files->get($path);
-        $marker = '// smn-template:bindings';
+        $marker = '// cachewraith-template:bindings';
 
         if (! str_contains($contents, $marker)) {
             foreach ($bindings as $contract => $implementation) {
@@ -529,23 +529,23 @@ final class InstallCommand extends Command
 
         $contents = $files->get($path);
 
-        if (str_contains($contents, 'smn-laravel-template-structure')) {
+        if (str_contains($contents, 'cachewraith-laravel-template-structure')) {
             return;
         }
 
         $files->append($path, <<<'ENV'
 
-# --- smn-laravel-template-structure -------------------------------------
+# --- cachewraith-laravel-template-structure -------------------------------------
 # APP_DEBUG must be false in production: a debug response leaks file paths,
 # SQL fragments and environment values (OWASP A02).
 # APP_DEBUG=false
 # APP_ENV=production
 #
-# SMN_SECURITY_HEADERS=true
-# SMN_HSTS=true
-# SMN_FORCE_HTTPS=true
-# SMN_RATE_LIMITING=true
-# SMN_API_PREFIX=api
+# CACHEWRAITH_SECURITY_HEADERS=true
+# CACHEWRAITH_HSTS=true
+# CACHEWRAITH_FORCE_HTTPS=true
+# CACHEWRAITH_RATE_LIMITING=true
+# CACHEWRAITH_API_PREFIX=api
 # ------------------------------------------------------------------------
 ENV);
 
@@ -564,9 +564,9 @@ ENV);
         then: function (): void {
             // Every configured API version is loaded from routes/api/{version}.php.
             // Adding v2 never means editing v1 (Open/Closed).
-            $prefix = trim((string) config('smn-template.api_version_prefix', 'api'), '/');
+            $prefix = trim((string) config('cachewraith-template.api_version_prefix', 'api'), '/');
 
-            foreach ((array) config('smn-template.versions', ['v1']) as $version) {
+            foreach ((array) config('cachewraith-template.versions', ['v1']) as $version) {
                 $file = base_path("routes/api/{$version}.php");
 
                 if (file_exists($file)) {
@@ -582,9 +582,9 @@ PHP;
     private function routingGroupSnippet(): string
     {
         return <<<'PHP'
-            $prefix = trim((string) config('smn-template.api_version_prefix', 'api'), '/');
+            $prefix = trim((string) config('cachewraith-template.api_version_prefix', 'api'), '/');
 
-            foreach ((array) config('smn-template.versions', ['v1']) as $version) {
+            foreach ((array) config('cachewraith-template.versions', ['v1']) as $version) {
                 $file = base_path("routes/api/{$version}.php");
 
                 if (file_exists($file)) {

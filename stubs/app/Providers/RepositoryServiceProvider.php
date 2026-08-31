@@ -17,7 +17,7 @@ use Illuminate\Support\ServiceProvider;
  *
  *     $this->app->bind(UserRepositoryInterface::class, InMemoryUserRepository::class);
  *
- * php artisan smn:install appends new bindings directly below the marker
+ * php artisan cachewraith:install appends new bindings directly below the marker
  * comment, so keep it in place if you want that to keep working.
  */
 final class RepositoryServiceProvider extends ServiceProvider
@@ -28,7 +28,7 @@ final class RepositoryServiceProvider extends ServiceProvider
      * @var array<class-string, class-string>
      */
     public array $bindings = [
-        // smn-template:bindings
+        // cachewraith-template:bindings
         \App\Repositories\Contracts\UserRepositoryInterface::class => \App\Repositories\Eloquent\EloquentUserRepository::class,
     ];
 

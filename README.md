@@ -1,4 +1,4 @@
-# smn/laravel-template-structure
+# cachewraith/laravel-template-structure
 
 An installer-style Laravel package — in the spirit of Laravel Breeze — that scaffolds a
 clean, scalable, **OOAD-based**, **OWASP-hardened**, **versioned-API** architecture into any
@@ -7,10 +7,10 @@ Laravel 10, 11, 12 or 13 application.
 It is not a runtime framework. One command copies real, working code into your application
 and wires it up; after that the package can be removed and your application keeps working.
 
-- **Vendor:** smn (Somonor Hong)
-- **Package:** `smn/laravel-template-structure`
-- **Namespace:** `Smn\LaravelTemplateStructure`
-- **Install command:** `php artisan smn:install`
+- **Vendor:** cachewraith (Somonor Hong)
+- **Package:** `cachewraith/laravel-template-structure`
+- **Namespace:** `Cachewraith\LaravelTemplateStructure`
+- **Install command:** `php artisan cachewraith:install`
 - **License:** MIT
 
 ---
@@ -18,8 +18,8 @@ and wires it up; after that the package can be removed and your application keep
 ## Installation
 
 ```bash
-composer require smn/laravel-template-structure
-php artisan smn:install
+composer require cachewraith/laravel-template-structure
+php artisan cachewraith:install
 composer dump-autoload
 php artisan migrate
 ```
@@ -34,14 +34,14 @@ Point a throwaway Laravel application at your working copy:
 // composer.json of the consuming application
 {
     "repositories": [
-        { "type": "path", "url": "../smn-laravel-template-structure" }
+        { "type": "path", "url": "../cachewraith-laravel-template-structure" }
     ]
 }
 ```
 
 ```bash
-composer require smn/laravel-template-structure:*
-php artisan smn:install
+composer require cachewraith/laravel-template-structure:*
+php artisan cachewraith:install
 php artisan route:list --path=api      # api/v1/users should be listed
 ```
 
@@ -59,16 +59,16 @@ file — is printed as a snippet to paste in yourself, rather than being forced.
 
 | Tag | Publishes |
 | --- | --- |
-| `smn-template-stubs` | The whole stub tree to `stubs/smn-template/` |
-| `smn-template-config` | `config/smn-template.php` |
+| `cachewraith-template-stubs` | The whole stub tree to `stubs/cachewraith-template/` |
+| `cachewraith-template-config` | `config/cachewraith-template.php` |
 
 ```bash
-php artisan vendor:publish --tag=smn-template-stubs
+php artisan vendor:publish --tag=cachewraith-template-stubs
 ```
 
-`smn:install` publishes the stub tree for you, and **prefers the published stubs over the
-packaged ones** on subsequent runs. Edit `stubs/smn-template/**` to make the scaffolding
-match your house style, then re-run `php artisan smn:install --force`.
+`cachewraith:install` publishes the stub tree for you, and **prefers the published stubs over the
+packaged ones** on subsequent runs. Edit `stubs/cachewraith-template/**` to make the scaffolding
+match your house style, then re-run `php artisan cachewraith:install --force`.
 
 ---
 
@@ -111,7 +111,7 @@ routes/api/
 └── v1.php                                    Route::apiResource('users', ...)
 
 config/
-└── smn-template.php                          feature toggles
+└── cachewraith-template.php                          feature toggles
 ```
 
 The installer also patches, when it can do so safely:
@@ -182,10 +182,10 @@ route file and new controllers, never an edit to `v1`.
 
 ## API versioning
 
-`config/smn-template.php` drives it:
+`config/cachewraith-template.php` drives it:
 
 ```php
-'api_version_prefix' => env('SMN_API_PREFIX', 'api'),
+'api_version_prefix' => env('CACHEWRAITH_API_PREFIX', 'api'),
 'versions' => ['v1'],
 ```
 
@@ -289,7 +289,7 @@ Commit `composer.lock`, keep dependency updates small and frequent, and prefer
    `User` model can express. Tighten them to your roles before shipping — and tighten
    rather than loosen: `create` currently allows any authenticated user, which is right for
    an admin-only console and wrong for a public API.
-5. **Review `config/smn-template.php`**, especially the CSP if you ever serve HTML from the
+5. **Review `config/cachewraith-template.php`**, especially the CSP if you ever serve HTML from the
    same application.
 
 ### Why `SecurityServiceProvider` and not `AppServiceProvider`?

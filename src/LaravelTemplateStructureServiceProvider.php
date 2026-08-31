@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Smn\LaravelTemplateStructure;
+namespace Cachewraith\LaravelTemplateStructure;
 
 use Illuminate\Support\ServiceProvider;
-use Smn\LaravelTemplateStructure\Console\InstallCommand;
+use Cachewraith\LaravelTemplateStructure\Console\InstallCommand;
 
 /**
  * Package entry point.
@@ -33,8 +33,8 @@ final class LaravelTemplateStructureServiceProvider extends ServiceProvider
     public function register(): void
     {
         // Single source of truth: the same file is merged here, published by
-        // the "smn-template-config" tag, and copied into config/ on install.
-        $this->mergeConfigFrom(static::packagePath('stubs/config/smn-template.php'), 'smn-template');
+        // the "cachewraith-template-config" tag, and copied into config/ on install.
+        $this->mergeConfigFrom(static::packagePath('stubs/config/cachewraith-template.php'), 'cachewraith-template');
     }
 
     /**
@@ -51,15 +51,15 @@ final class LaravelTemplateStructureServiceProvider extends ServiceProvider
         ]);
 
         // Publish the raw stub tree so a team can customise the generated code
-        // before (or after) running php artisan smn:install. The installer
+        // before (or after) running php artisan cachewraith:install. The installer
         // prefers these published stubs over the packaged ones when present.
         $this->publishes([
-            static::packagePath('stubs') => base_path('stubs/smn-template'),
-        ], 'smn-template-stubs');
+            static::packagePath('stubs') => base_path('stubs/cachewraith-template'),
+        ], 'cachewraith-template-stubs');
 
         $this->publishes([
-            static::packagePath('stubs/config/smn-template.php') => config_path('smn-template.php'),
-        ], 'smn-template-config');
+            static::packagePath('stubs/config/cachewraith-template.php') => config_path('cachewraith-template.php'),
+        ], 'cachewraith-template-config');
     }
 
     /**

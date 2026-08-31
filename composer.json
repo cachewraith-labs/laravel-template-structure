@@ -1,5 +1,5 @@
 {
-    "name": "smn/laravel-template-structure",
+    "name": "cachewraith/laravel-template-structure",
     "description": "Installer-style Laravel package that scaffolds a clean, scalable, OOAD-based, OWASP-hardened, versioned-API architecture into any Laravel 10/11/12 application.",
     "type": "library",
     "license": "MIT",
@@ -27,13 +27,13 @@
     },
     "autoload": {
         "psr-4": {
-            "Smn\\LaravelTemplateStructure\\": "src/"
+            "Cachewraith\\LaravelTemplateStructure\\": "src/"
         }
     },
     "extra": {
         "laravel": {
             "providers": [
-                "Smn\\LaravelTemplateStructure\\LaravelTemplateStructureServiceProvider"
+                "Cachewraith\\LaravelTemplateStructure\\LaravelTemplateStructureServiceProvider"
             ]
         }
     },
