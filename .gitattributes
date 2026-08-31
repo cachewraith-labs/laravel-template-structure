@@ -1,0 +1,11 @@
+* text=auto eol=lf
+
+*.php diff=php
+*.md  diff=markdown
+
+# Keep the Composer dist tarball to what a consuming application actually
+# needs. src/ and stubs/ must NEVER be export-ignored — the installer reads
+# its stub tree from the installed package at runtime.
+/.gitattributes export-ignore
+/.gitignore     export-ignore
+/.github/       export-ignore
