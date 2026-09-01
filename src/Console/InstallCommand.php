@@ -11,10 +11,23 @@ use Cachewraith\LaravelTemplateStructure\LaravelTemplateStructureServiceProvider
 /**
  * Scaffolds the template structure into the host application.
  *
- * Template Method: handle() fixes the order of the installation — copy, wire,
- * report — while each step is a small private method that knows one file
- * format. Adding a step means adding a method and one line to handle(), not
- * restructuring the command.
+ * Template Method: handle() fixes the order of the installation — choose the
+ * stack, copy, wire, report — while each step is a small private method that
+ * knows one file format. Adding a step means adding a method and one line to
+ * handle(), not restructuring the command.
+ *
+ * Two front doors, one set of layers. --stack decides which of them is
+ * scaffolded: the versioned JSON API, the Blade UI, or both. The choice only
+ * ever changes the transport — controllers, form requests, resources or
+ * templates, routes and middleware. Models, services, repositories and
+ * policies are copied either way, because they are the part that does not
+ * care how the request arrived, and duplicating them per transport is how the
+ * two halves start disagreeing about what the rules are.
+ *
+ * The filtering is a path allowlist (see stackOf()) rather than three stub
+ * trees. One tree keeps the shared files literally shared — there is no
+ * chance of the API's ItemService drifting from the web's — and keeps
+ * --publish-stubs publishing one thing.
  *
  * Every step is idempotent and every step fails soft: when a file cannot be
  * patched automatically (because the application has already customised it),
@@ -27,11 +40,79 @@ use Cachewraith\LaravelTemplateStructure\LaravelTemplateStructureServiceProvider
  */
 final class InstallCommand extends Command
 {
+    private const STACK_API = 'api';
+
+    private const STACK_WEB = 'web';
+
+    private const STACK_BOTH = 'both';
+
+    /**
+     * Stub paths, relative to the stub root, that belong to exactly one stack.
+     * Anything not matched here is shared and is installed for both.
+     *
+     * Prefix match, so a directory covers everything under it.
+     *
+     * @var array<string, list<string>>
+     */
+    private const STACK_PATHS = [
+        self::STACK_API => [
+            'app/Http/Controllers/Api/',
+            'app/Http/Requests/V1/',
+            'app/Http/Requests/V2/',
+            'app/Http/Resources/',
+            'app/Http/Middleware/ForceJsonResponse.php',
+            'app/Traits/ApiResponse.php',
+            'routes/api_',
+            'tests/Feature/V1/',
+            'tests/Feature/V2/',
+            'docs/API.md',
+        ],
+        self::STACK_WEB => [
+            'app/Http/Controllers/Web/',
+            'app/Http/Requests/Web/',
+            'app/Support/Money.php',
+            'resources/',
+            'public/',
+            'routes/web_ui.php',
+            'tests/Feature/Web/',
+            'tests/Unit/MoneyTest.php',
+            'docs/WEB.md',
+        ],
+    ];
+
+    /**
+     * Packages and paths that mean the application already owns its
+     * session-authentication flow. When one is present the web stack is
+     * scaffolded without a login controller, request or view, and
+     * routes/web_ui.php leaves the credential routes alone.
+     *
+     * @var list<string>
+     */
+    private const AUTH_SCAFFOLDING = [
+        'laravel/ui',
+        'laravel/breeze',
+        'laravel/jetstream',
+        'laravel/fortify',
+    ];
+
+    /**
+     * The web stack's auth slice, skipped when the application has its own.
+     *
+     * @var list<string>
+     */
+    private const WEB_AUTH_PATHS = [
+        'app/Http/Controllers/Web/Auth/',
+        'app/Http/Requests/Web/LoginRequest.php',
+        'resources/views/auth/',
+        'tests/Feature/Web/LoginTest.php',
+    ];
+
     protected $signature = 'cachewraith:install
+                            {--stack= : Which front door to scaffold: api, web or both}
                             {--force : Overwrite scaffolded files that already exist}
                             {--publish-stubs : Also copy the raw stub tree to stubs/cachewraith-template/ for customisation}';
 
-    protected $description = 'Scaffold the clean, OOAD-based, OWASP-hardened versioned-API structure into this application';
+    protected $description = 'Scaffold the clean, OOAD-based, OWASP-hardened layered structure — versioned JSON API, Blade UI, or both';
 
     /** @var array<int, string> */
     private array $created = [];
@@ -45,16 +126,31 @@ final class InstallCommand extends Command
     /** @var array<int, array{0: string, 1: string}> */
     private array $manual = [];
 
+    /** @var array<int, string> */
+    private array $notes = [];
+
+    private string $stack = self::STACK_API;
+
+    private string $stubRoot = '';
+
+    private bool $ownsAuthScaffolding = false;
+
     public function handle(Filesystem $files): int
     {
         $this->components->info('Installing cachewraith/laravel-template-structure...');
+
+        $this->stack = $this->resolveStack();
+
+        if ($this->installsWeb()) {
+            $this->ownsAuthScaffolding = $this->detectAuthScaffolding($files);
+        }
 
         if ($this->option('publish-stubs')) {
             $this->publishStubs();
         }
 
-        $source = $this->stubSource($files);
-        $this->line('  <fg=gray>Stub source: '.$this->relative($source).'</>');
+        $source = $this->stubRoot = $this->stubSource($files);
+        $this->line('  <fg=gray>Stack: '.$this->stack.'  ·  stub source: '.$this->relative($source).'</>');
 
         $this->copyApplicationTree($files, $source);
         $this->copyTree($files, $source.'/config', config_path());
@@ -63,6 +159,8 @@ final class InstallCommand extends Command
         $this->copyTree($files, $source.'/tests', base_path('tests'));
         $this->copyTree($files, $source.'/docker', base_path('docker'));
         $this->copyTree($files, $source.'/docs', base_path('docs'));
+        $this->copyTree($files, $source.'/resources', resource_path());
+        $this->copyTree($files, $source.'/public', public_path());
 
         // docker-compose*.yml, .dockerignore.
         $this->copyTree($files, $source.'/root', base_path(), ['CLAUDE.md', 'AGENTS.md']);
@@ -80,10 +178,158 @@ final class InstallCommand extends Command
         $this->wireAppServiceProvider($files);
         $this->appendRepositoryBindings($files);
         $this->noteEnvExample($files);
+        $this->checkConfigIsCurrent($files);
+        $this->checkLayoutIsCompatible($files);
 
         $this->summary();
 
         return self::SUCCESS;
+    }
+
+    /*
+    |----------------------------------------------------------------------
+    | Stack selection
+    |----------------------------------------------------------------------
+    */
+
+    /**
+     * --stack wins; otherwise ask, defaulting to "api".
+     *
+     * The default is "api" rather than "both" on purpose: it is what every
+     * release before the web stack existed produced, so an unattended re-run
+     * — a deploy script, a CI step, --no-interaction — keeps doing exactly
+     * what it did yesterday and never drops a resources/views tree into a
+     * project that has no use for one.
+     */
+    private function resolveStack(): string
+    {
+        $given = $this->option('stack');
+
+        if (is_string($given) && $given !== '') {
+            $given = strtolower(trim($given));
+
+            if (in_array($given, [self::STACK_API, self::STACK_WEB, self::STACK_BOTH], true)) {
+                return $given;
+            }
+
+            $this->components->warn(
+                'Unknown --stack='.$given.'. Expected api, web or both — falling back to api.'
+            );
+
+            return self::STACK_API;
+        }
+
+        if (! $this->input->isInteractive()) {
+            return self::STACK_API;
+        }
+
+        return $this->choice(
+            'Which front door should be scaffolded?',
+            [
+                self::STACK_API => 'api   — versioned JSON API (Sanctum tokens, resources, envelope)',
+                self::STACK_WEB => 'web   — Blade UI (session auth, forms, views)',
+                self::STACK_BOTH => 'both  — one set of services, policies and repositories behind both',
+            ],
+            self::STACK_API,
+        );
+    }
+
+    private function installsApi(): bool
+    {
+        return $this->stack === self::STACK_API || $this->stack === self::STACK_BOTH;
+    }
+
+    private function installsWeb(): bool
+    {
+        return $this->stack === self::STACK_WEB || $this->stack === self::STACK_BOTH;
+    }
+
+    /**
+     * Does this application already own a sign-in flow?
+     *
+     * Overwriting Breeze's routes, controllers and views — or racing them for
+     * the "login" route name — is a worse outcome than shipping no auth at
+     * all, so the scaffold defers. routes/web_ui.php guards its credential
+     * routes on class_exists, so skipping the controller is all it takes.
+     */
+    private function detectAuthScaffolding(Filesystem $files): bool
+    {
+        if ($files->isDirectory(app_path('Http/Controllers/Auth'))) {
+            $this->notes[] = 'app/Http/Controllers/Auth exists — the sign-in slice was not generated.';
+
+            return true;
+        }
+
+        $manifest = base_path('composer.json');
+
+        if (! $files->exists($manifest)) {
+            return false;
+        }
+
+        /** @var array{require?: array<string, string>, require-dev?: array<string, string>}|null $composer */
+        $composer = json_decode($files->get($manifest), true);
+
+        if (! is_array($composer)) {
+            return false;
+        }
+
+        $required = array_merge(
+            array_keys((array) ($composer['require'] ?? [])),
+            array_keys((array) ($composer['require-dev'] ?? [])),
+        );
+
+        foreach (self::AUTH_SCAFFOLDING as $package) {
+            if (in_array($package, $required, true)) {
+                $this->notes[] = $package.' is installed — the sign-in slice was not generated; its routes stay yours.';
+
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Is this stub path part of the selected installation?
+     *
+     * The auth slice is checked first because it is a subset of the web
+     * stack with an extra condition, and a later, broader web rule would
+     * otherwise claim it.
+     *
+     * Anything matching no rule is shared — models, services, repositories,
+     * policies, config, migrations, Docker. That default is deliberate: a new
+     * shared file is installed for every stack without anyone remembering to
+     * list it, and only transport-specific files need an entry.
+     */
+    private function isSelected(string $relative): bool
+    {
+        if ($this->matchesAny($relative, self::WEB_AUTH_PATHS)) {
+            return $this->installsWeb() && ! $this->ownsAuthScaffolding;
+        }
+
+        if ($this->matchesAny($relative, self::STACK_PATHS[self::STACK_API])) {
+            return $this->installsApi();
+        }
+
+        if ($this->matchesAny($relative, self::STACK_PATHS[self::STACK_WEB])) {
+            return $this->installsWeb();
+        }
+
+        return true;
+    }
+
+    /**
+     * @param  list<string>  $prefixes
+     */
+    private function matchesAny(string $relative, array $prefixes): bool
+    {
+        foreach ($prefixes as $prefix) {
+            if (str_starts_with($relative, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /*
@@ -205,9 +451,10 @@ final class InstallCommand extends Command
 
     /**
      * Copy a directory tree, never clobbering existing application files
-     * unless --force was given.
+     * unless --force was given, and never copying a file that belongs to a
+     * stack this install did not ask for.
      *
-     * @param  array<int, string>  $except  Relative paths to leave behind.
+     * @param  array<int, string>  $except  Paths, relative to $from, to leave behind.
      */
     private function copyTree(Filesystem $files, string $from, string $to, array $except = []): void
     {
@@ -224,6 +471,13 @@ final class InstallCommand extends Command
                 continue;
             }
 
+            // isSelected() reasons about paths relative to the stub root, not
+            // to the directory being copied, so that one table can describe
+            // "app/Http/Controllers/Web/" and "resources/" in the same terms.
+            if (! $this->isSelected($this->stubRelative($from, $relative))) {
+                continue;
+            }
+
             $target = $to.DIRECTORY_SEPARATOR.$file->getRelativePathname();
 
             if ($files->exists($target) && ! $this->option('force')) {
@@ -236,6 +490,20 @@ final class InstallCommand extends Command
             $files->copy($file->getPathname(), $target);
             $this->created[] = $this->relative($target);
         }
+    }
+
+    /**
+     * Re-root a path that is relative to $from onto the stub tree's root.
+     */
+    private function stubRelative(string $from, string $relative): string
+    {
+        $prefix = trim(str_replace(
+            str_replace(DIRECTORY_SEPARATOR, '/', $this->stubRoot),
+            '',
+            str_replace(DIRECTORY_SEPARATOR, '/', $from),
+        ), '/');
+
+        return $prefix === '' ? $relative : $prefix.'/'.$relative;
     }
 
     /*
@@ -264,8 +532,11 @@ final class InstallCommand extends Command
 
     private function injectRouting(string $contents): string
     {
-        if (str_contains($contents, 'routes/api_')) {
-            $this->wired[] = 'bootstrap/app.php already loads routes/api_*.php';
+        $api = $this->installsApi() && ! str_contains($contents, 'routes/api_');
+        $web = $this->installsWeb() && ! $this->mentionsWebRoutes($contents);
+
+        if (! $api && ! $web) {
+            $this->wired[] = 'bootstrap/app.php already loads the scaffolded route files';
 
             return $contents;
         }
@@ -273,7 +544,7 @@ final class InstallCommand extends Command
         $open = strpos($contents, '->withRouting(');
 
         if ($open === false) {
-            $this->manual[] = ['bootstrap/app.php (inside ->withRouting())', $this->routingSnippet()];
+            $this->manual[] = ['bootstrap/app.php (inside ->withRouting())', $this->routingSnippet($api, $web)];
 
             return $contents;
         }
@@ -282,15 +553,17 @@ final class InstallCommand extends Command
         $close = $this->matchingParen($contents, $parenAt);
 
         if ($close === null) {
-            $this->manual[] = ['bootstrap/app.php (inside ->withRouting())', $this->routingSnippet()];
+            $this->manual[] = ['bootstrap/app.php (inside ->withRouting())', $this->routingSnippet($api, $web)];
 
             return $contents;
         }
 
-        // An existing then: closure is the application's own; merging into it
-        // automatically would be guesswork, so hand it back to the developer.
+        // An existing then: closure is the application's own — or one this
+        // installer wrote on an earlier run for the other stack. Merging into
+        // it automatically would be guesswork, so hand it back to the
+        // developer rather than producing a file that does not parse.
         if (str_contains(substr($contents, $open, $close - $open), 'then:')) {
-            $this->manual[] = ['bootstrap/app.php (inside the existing then: closure)', $this->routingGroupSnippet()];
+            $this->manual[] = ['bootstrap/app.php (inside the existing then: closure)', $this->routingGroupSnippet($api, $web)];
 
             return $contents;
         }
@@ -303,17 +576,36 @@ final class InstallCommand extends Command
             $before .= ',';
         }
 
-        $injected = $before."\n".$this->routingSnippet()."\n    ".substr($contents, $close);
+        $injected = $before."\n".$this->routingSnippet($api, $web)."\n    ".substr($contents, $close);
 
-        $this->wired[] = 'bootstrap/app.php: routes/api_{version}.php loaded under the api group, name-prefixed per version';
+        if ($api) {
+            $this->wired[] = 'bootstrap/app.php: routes/api_{version}.php loaded under the api group, name-prefixed per version';
+        }
+
+        if ($web) {
+            $this->wired[] = 'bootstrap/app.php: routes/web_ui.php loaded under the web group';
+        }
 
         return $injected;
     }
 
+    private function mentionsWebRoutes(string $contents): bool
+    {
+        return str_contains($contents, 'web.routes_file') || str_contains($contents, 'routes/web_ui');
+    }
+
     private function injectMiddleware(string $contents): string
     {
-        if (str_contains($contents, 'Middleware\\SecurityHeaders')) {
-            $this->wired[] = 'bootstrap/app.php already registers the security middleware';
+        // Guarded piece by piece, not all-or-nothing: installing the API
+        // today after installing the web stack yesterday must still register
+        // ForceJsonResponse, and a single "is SecurityHeaders here?" check
+        // would silently decide the file was already done.
+        $json = $this->installsApi() && ! str_contains($contents, 'Middleware\\ForceJsonResponse');
+        $headers = ! str_contains($contents, 'Middleware\\SecurityHeaders');
+        $alias = ! str_contains($contents, "'ratelimit.api'");
+
+        if (! $json && ! $headers && ! $alias) {
+            $this->wired[] = 'bootstrap/app.php already registers the scaffolded middleware';
 
             return $contents;
         }
@@ -321,16 +613,22 @@ final class InstallCommand extends Command
         $pattern = '/->withMiddleware\(\s*function\s*\(\s*[\\\\\w]*Middleware\s+\$middleware\s*\)\s*(?::\s*void\s*)?\{/';
 
         if (preg_match($pattern, $contents, $matches, PREG_OFFSET_CAPTURE) !== 1) {
-            $this->manual[] = ['bootstrap/app.php (inside ->withMiddleware())', $this->middlewareSnippet()];
+            $this->manual[] = ['bootstrap/app.php (inside ->withMiddleware())', $this->middlewareSnippet($json, $headers, $alias)];
 
             return $contents;
         }
 
         $at = $matches[0][1] + strlen($matches[0][0]);
 
-        $this->wired[] = 'bootstrap/app.php: ForceJsonResponse prepended to the api group, SecurityHeaders appended globally, ratelimit.api aliased';
+        $registered = array_filter([
+            $json ? 'ForceJsonResponse prepended to the api group' : null,
+            $headers ? 'SecurityHeaders appended globally' : null,
+            $alias ? 'ratelimit.api aliased' : null,
+        ]);
 
-        return substr($contents, 0, $at)."\n".$this->middlewareSnippet()."\n".substr($contents, $at);
+        $this->wired[] = 'bootstrap/app.php: '.implode(', ', $registered);
+
+        return substr($contents, 0, $at)."\n".$this->middlewareSnippet($json, $headers, $alias)."\n".substr($contents, $at);
     }
 
     private function injectExceptions(string $contents): string
@@ -365,17 +663,21 @@ final class InstallCommand extends Command
     private function wireRouteServiceProvider(Filesystem $files): void
     {
         $path = app_path('Providers/RouteServiceProvider.php');
+        $api = $this->installsApi();
+        $web = $this->installsWeb();
 
         if (! $files->exists($path)) {
-            $this->manual[] = ['app/Providers/RouteServiceProvider.php', $this->routingGroupSnippet()];
+            $this->manual[] = ['app/Providers/RouteServiceProvider.php', $this->routingGroupSnippet($api, $web)];
 
             return;
         }
 
         $contents = $files->get($path);
+        $api = $api && ! str_contains($contents, 'routes/api_');
+        $web = $web && ! $this->mentionsWebRoutes($contents);
 
-        if (str_contains($contents, 'routes/api_')) {
-            $this->wired[] = 'RouteServiceProvider already loads routes/api_*.php';
+        if (! $api && ! $web) {
+            $this->wired[] = 'RouteServiceProvider already loads the scaffolded route files';
 
             return;
         }
@@ -383,15 +685,21 @@ final class InstallCommand extends Command
         $pattern = '/\$this->routes\(\s*function\s*\(\s*\)\s*(?::\s*void\s*)?\{/';
 
         if (preg_match($pattern, $contents, $matches, PREG_OFFSET_CAPTURE) !== 1) {
-            $this->manual[] = ['app/Providers/RouteServiceProvider.php (inside $this->routes())', $this->routingGroupSnippet()];
+            $this->manual[] = ['app/Providers/RouteServiceProvider.php (inside $this->routes())', $this->routingGroupSnippet($api, $web)];
 
             return;
         }
 
         $at = $matches[0][1] + strlen($matches[0][0]);
-        $files->put($path, substr($contents, 0, $at)."\n".$this->routingGroupSnippet()."\n".substr($contents, $at));
+        $files->put($path, substr($contents, 0, $at)."\n".$this->routingGroupSnippet($api, $web)."\n".substr($contents, $at));
 
-        $this->wired[] = 'RouteServiceProvider: routes/api_{version}.php loaded under the api middleware group';
+        if ($api) {
+            $this->wired[] = 'RouteServiceProvider: routes/api_{version}.php loaded under the api middleware group';
+        }
+
+        if ($web) {
+            $this->wired[] = 'RouteServiceProvider: routes/web_ui.php loaded under the web middleware group';
+        }
     }
 
     private function wireHttpKernel(Filesystem $files): void
@@ -399,28 +707,34 @@ final class InstallCommand extends Command
         $path = app_path('Http/Kernel.php');
 
         if (! $files->exists($path)) {
-            $this->manual[] = ['app/Http/Kernel.php', $this->kernelSnippet()];
+            $this->manual[] = ['app/Http/Kernel.php', $this->kernelSnippet($this->installsApi(), true, true)];
 
             return;
         }
 
         $contents = $files->get($path);
 
-        if (str_contains($contents, 'Middleware\\SecurityHeaders')) {
-            $this->wired[] = 'app/Http/Kernel.php already registers the security middleware';
+        // Piece by piece, so installing the second stack later still lands
+        // the middleware the first one did not need.
+        $json = $this->installsApi() && ! str_contains($contents, 'Middleware\\ForceJsonResponse');
+        $headers = ! str_contains($contents, 'Middleware\\SecurityHeaders');
+        $alias = ! str_contains($contents, "'ratelimit.api'");
+
+        if (! $json && ! $headers && ! $alias) {
+            $this->wired[] = 'app/Http/Kernel.php already registers the scaffolded middleware';
 
             return;
         }
 
         $patched = $contents;
 
-        $insertions = [
-            '/protected \$middleware = \[/' => "\n        \\App\\Http\\Middleware\\SecurityHeaders::class,",
-            "/'api' => \[/" => "\n            \\App\\Http\\Middleware\\ForceJsonResponse::class,",
-            '/protected \$middlewareAliases = \[/' => "\n        'ratelimit.api' => \\App\\Http\\Middleware\\RateLimitApi::class,",
-        ];
+        $insertions = array_filter([
+            $headers ? ['/protected \$middleware = \[/', "\n        \\App\\Http\\Middleware\\SecurityHeaders::class,"] : null,
+            $json ? ["/'api' => \[/", "\n            \\App\\Http\\Middleware\\ForceJsonResponse::class,"] : null,
+            $alias ? ['/protected \$middlewareAliases = \[/', "\n        'ratelimit.api' => \\App\\Http\\Middleware\\RateLimitApi::class,"] : null,
+        ]);
 
-        foreach ($insertions as $pattern => $insertion) {
+        foreach ($insertions as [$pattern, $insertion]) {
             if (preg_match($pattern, $patched, $m, PREG_OFFSET_CAPTURE) !== 1) {
                 continue;
             }
@@ -430,13 +744,20 @@ final class InstallCommand extends Command
         }
 
         if ($patched === $contents) {
-            $this->manual[] = ['app/Http/Kernel.php', $this->kernelSnippet()];
+            $this->manual[] = ['app/Http/Kernel.php', $this->kernelSnippet($json, $headers, $alias)];
 
             return;
         }
 
         $files->put($path, $patched);
-        $this->wired[] = 'app/Http/Kernel.php: SecurityHeaders (global), ForceJsonResponse (api group), ratelimit.api alias';
+
+        $registered = array_filter([
+            $headers ? 'SecurityHeaders (global)' : null,
+            $json ? 'ForceJsonResponse (api group)' : null,
+            $alias ? 'ratelimit.api alias' : null,
+        ]);
+
+        $this->wired[] = 'app/Http/Kernel.php: '.implode(', ', $registered);
     }
 
     private function wireLegacyExceptionHandler(Filesystem $files): void
@@ -659,6 +980,19 @@ final class InstallCommand extends Command
 # CACHEWRAITH_API_PREFIX=api
 # CACHEWRAITH_CURRENCY=USD
 #
+# The Blade UI. CACHEWRAITH_WEB=false unregisters every scaffolded page in
+# one switch; CACHEWRAITH_WEB_PREFIX moves them all under one path.
+# CACHEWRAITH_WEB=true
+# CACHEWRAITH_WEB_PREFIX=
+#
+# Sessions back the Blade sign-in flow (OWASP A07). In production the cookie
+# must be TLS-only and unreadable from JavaScript, and it must not be sent on
+# cross-site navigations.
+# SESSION_DRIVER=database
+# SESSION_SECURE_COOKIE=true
+# SESSION_HTTP_ONLY=true
+# SESSION_SAME_SITE=lax
+#
 # Explicit CORS allow-list. Empty means "no browser origin is granted access"
 # (OWASP A02) — name the origins, never use a wildcard with credentials.
 # CORS_ALLOWED_ORIGINS="https://app.example.com"
@@ -676,69 +1010,172 @@ ENV);
         $this->wired[] = '.env.example: production hardening notes appended';
     }
 
+    /**
+     * An existing config/cachewraith-template.php is never overwritten
+     * without --force, so a project scaffolded before the web stack existed
+     * keeps a config file with no "web" and no "web_security_headers" keys.
+     *
+     * That degrades safely — SecurityHeaders falls back to a built-in web
+     * profile and the route loader to its defaults — but the developer can no
+     * longer tune either from config, and would have no way of knowing why.
+     * So: say so, precisely, rather than forcing a file the application owns.
+     */
+    private function checkConfigIsCurrent(Filesystem $files): void
+    {
+        if (! $this->installsWeb()) {
+            return;
+        }
+
+        $path = config_path('cachewraith-template.php');
+
+        if (! $files->exists($path)) {
+            return;
+        }
+
+        $contents = $files->get($path);
+
+        $missing = array_values(array_filter([
+            str_contains($contents, "'web_security_headers'") ? null : 'web_security_headers',
+            str_contains($contents, "'web' =>") ? null : 'web',
+        ]));
+
+        if ($missing === []) {
+            return;
+        }
+
+        $this->notes[] = 'config/cachewraith-template.php predates the web stack and is missing: '
+            .implode(', ', $missing)
+            .'. Safe built-in defaults apply until you copy the new sections in (or re-run with --force).';
+    }
+
+    /**
+     * The scaffolded pages are @extends('layouts.app') + @section('content'),
+     * so they need a layout that yields that section.
+     *
+     * Breeze and Jetstream ship a resources/views/layouts/app.blade.php of
+     * their own, and theirs is a *component* layout built around $slot with
+     * no @yield at all. copyTree leaves an existing file alone, which is the
+     * right instinct — but the failure it produces here is silent: the pages
+     * render, the chrome appears, and the content is simply missing. So look,
+     * and say so.
+     */
+    private function checkLayoutIsCompatible(Filesystem $files): void
+    {
+        if (! $this->installsWeb()) {
+            return;
+        }
+
+        $path = resource_path('views/layouts/app.blade.php');
+
+        if (! $files->exists($path) || str_contains($files->get($path), "@yield('content')")) {
+            return;
+        }
+
+        $this->notes[] = 'resources/views/layouts/app.blade.php already exists and does not @yield(\'content\'). '
+            .'The scaffolded pages extend it and would render empty. Either add @yield(\'content\') to your layout, '
+            .'or point the scaffolded views at a layout of their own.';
+    }
+
     /*
     |----------------------------------------------------------------------
     | Snippets
     |----------------------------------------------------------------------
     */
 
-    private function routingSnippet(): string
+    private function routingSnippet(bool $api = true, bool $web = false): string
     {
-        return <<<'PHP'
-        then: function (): void {
-            // Every configured API version is loaded from routes/api_{version}.php.
-            // Adding v2 never means editing v1 (Open/Closed).
-            $prefix = trim((string) config('cachewraith-template.api_version_prefix', 'api'), '/');
+        return "        then: function (): void {\n".$this->routingGroupSnippet($api, $web)."\n        },";
+    }
+
+    /**
+     * The body only — used inside an existing then: closure, and inside
+     * RouteServiceProvider::routes() on Laravel 10.
+     */
+    private function routingGroupSnippet(bool $api = true, bool $web = false): string
+    {
+        $parts = [];
+
+        if ($api) {
+            $parts[] = <<<'PHP'
+            // cachewraith-template: every configured API version is loaded from
+            // routes/api_{version}.php. Adding v2 never means editing v1
+            // (Open/Closed).
+            $apiPrefix = trim((string) config('cachewraith-template.api_version_prefix', 'api'), '/');
 
             foreach ((array) config('cachewraith-template.versions', ['v1']) as $version) {
                 $file = base_path("routes/api_{$version}.php");
 
                 if (file_exists($file)) {
                     \Illuminate\Support\Facades\Route::middleware('api')
-                        ->prefix($prefix.'/'.$version)
-                        ->name($version.'.')
-                        ->group($file);
-                }
-            }
-        },
-PHP;
-    }
-
-    private function routingGroupSnippet(): string
-    {
-        return <<<'PHP'
-            $prefix = trim((string) config('cachewraith-template.api_version_prefix', 'api'), '/');
-
-            foreach ((array) config('cachewraith-template.versions', ['v1']) as $version) {
-                $file = base_path("routes/api_{$version}.php");
-
-                if (file_exists($file)) {
-                    \Illuminate\Support\Facades\Route::middleware('api')
-                        ->prefix($prefix.'/'.$version)
+                        ->prefix($apiPrefix.'/'.$version)
                         ->name($version.'.')
                         ->group($file);
                 }
             }
 PHP;
+        }
+
+        if ($web) {
+            $parts[] = <<<'PHP'
+            // cachewraith-template: the Blade UI, from routes/web_ui.php.
+            // routes/web.php stays yours and is loaded as usual; delete
+            // web_ui.php and the scaffolded pages are gone. The route names in
+            // it are deliberately unprefixed — Laravel's own Authenticate
+            // middleware redirects a guest to route('login').
+            if (config('cachewraith-template.web.enabled', true)) {
+                $webRoutes = base_path((string) config('cachewraith-template.web.routes_file', 'routes/web_ui.php'));
+
+                if (file_exists($webRoutes)) {
+                    \Illuminate\Support\Facades\Route::middleware('web')
+                        ->prefix(trim((string) config('cachewraith-template.web.prefix', ''), '/'))
+                        ->group($webRoutes);
+                }
+            }
+PHP;
+        }
+
+        return implode("\n\n", $parts);
     }
 
-    private function middlewareSnippet(): string
+    private function middlewareSnippet(bool $json = true, bool $headers = true, bool $alias = true): string
     {
-        return <<<'PHP'
-        // Runs before auth and validation so error paths stay JSON (A02/A10).
+        $parts = [];
+
+        if ($json) {
+            $parts[] = <<<'PHP'
+        // Runs before auth and validation so API error paths stay JSON
+        // (A02/A10). Scoped to the api group: it must never touch the web
+        // group, where an HTML error page is the correct answer.
         $middleware->api(prepend: [
             \App\Http\Middleware\ForceJsonResponse::class,
         ]);
+PHP;
+        }
 
+        if ($headers) {
+            $parts[] = <<<'PHP'
         // CSP, framing, MIME-sniffing, referrer and HSTS headers (A02).
+        // Global, so routes added later inherit it. SecurityHeaders picks the
+        // API or the web header profile per request — see
+        // config/cachewraith-template.php.
         $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
+PHP;
+        }
 
+        if ($alias) {
+            $parts[] = <<<'PHP'
         // Per-bucket ceiling, selected by each route (A06/A07):
         //     ->middleware('ratelimit.api')  /  ->middleware('ratelimit.api:login')
+        // Used by the sign-in routes of both front doors — the "login" bucket
+        // is keyed on email + IP whether the credentials arrived as JSON or
+        // as a form post.
         $middleware->alias([
             'ratelimit.api' => \App\Http\Middleware\RateLimitApi::class,
         ]);
 PHP;
+        }
+
+        return implode("\n\n", $parts);
     }
 
     private function exceptionsSnippet(): string
@@ -758,21 +1195,35 @@ PHP;
 PHP;
     }
 
-    private function kernelSnippet(): string
+    private function kernelSnippet(bool $json = true, bool $headers = true, bool $alias = true): string
     {
-        return <<<'PHP'
+        $parts = [];
+
+        if ($headers) {
+            $parts[] = <<<'PHP'
 // protected $middleware = [
         \App\Http\Middleware\SecurityHeaders::class,
 // ];
+PHP;
+        }
 
+        if ($json) {
+            $parts[] = <<<'PHP'
 // 'api' => [
             \App\Http\Middleware\ForceJsonResponse::class,
 // ],
+PHP;
+        }
 
+        if ($alias) {
+            $parts[] = <<<'PHP'
 // protected $middlewareAliases = [
         'ratelimit.api' => \App\Http\Middleware\RateLimitApi::class,
 // ];
 PHP;
+        }
+
+        return implode("\n\n", $parts);
     }
 
     private function securityDefaultsSnippet(): string
@@ -921,6 +1372,14 @@ PHP;
             }
         }
 
+        if ($this->notes !== []) {
+            $this->newLine();
+            $this->components->warn('Worth knowing:');
+            foreach ($this->notes as $note) {
+                $this->line('    <fg=yellow>!</> '.$note);
+            }
+        }
+
         if ($this->manual !== []) {
             $this->newLine();
             $this->components->warn('Could not patch these automatically — add the snippet by hand:');
@@ -933,15 +1392,58 @@ PHP;
 
         $this->newLine();
         $this->components->info('Next steps');
-        $this->line('    1. <options=bold>composer dump-autoload</>');
-        $this->line('    2. <options=bold>php artisan install:api</> <fg=gray>(Laravel 11+ — installs Sanctum, needed by the auth routes)</>');
-        $this->line('    3. Add <options=bold>Laravel\Sanctum\HasApiTokens</> to App\Models\User');
-        $this->line('    4. <options=bold>php artisan migrate</> <fg=gray>(creates the items table)</>');
-        $this->line('    5. <options=bold>php artisan route:list --path=api</> <fg=gray>(you should see api/v1/items)</>');
-        $this->line('    6. <options=bold>php artisan test</> <fg=gray>(the scaffolded Feature/V1 and Unit tests)</>');
-        $this->line('    7. <options=bold>composer audit --locked</> <fg=gray>(OWASP A03 — wire this into CI)</>');
+
+        foreach ($this->nextSteps() as $index => [$command, $note]) {
+            $this->line('    '.($index + 1).'. <options=bold>'.$command.'</>'.($note === '' ? '' : ' <fg=gray>'.$note.'</>'));
+        }
+
         $this->newLine();
-        $this->components->info('Read docs/ARCHITECTURE.md, then copy the Item slice for your own aggregate and delete it.');
+        $this->components->info($this->installsWeb()
+            ? 'Read docs/ARCHITECTURE.md and docs/WEB.md, then copy the Item slice for your own aggregate and delete it.'
+            : 'Read docs/ARCHITECTURE.md, then copy the Item slice for your own aggregate and delete it.');
         $this->newLine();
+    }
+
+    /**
+     * @return list<array{0: string, 1: string}>
+     */
+    private function nextSteps(): array
+    {
+        $steps = [['composer dump-autoload', '']];
+
+        if ($this->installsApi()) {
+            $steps[] = ['php artisan install:api', '(Laravel 11+ — installs Sanctum, needed by the API auth routes)'];
+            $steps[] = ['Add Laravel\Sanctum\HasApiTokens to App\Models\User', ''];
+        }
+
+        $steps[] = ['php artisan migrate', '(creates the items table)'];
+
+        if ($this->installsApi()) {
+            $steps[] = ['php artisan route:list --path=api', '(you should see api/v1/items)'];
+        }
+
+        if ($this->installsWeb()) {
+            $steps[] = ['php artisan db:seed --class=UserSeeder', '(a local account to sign in with — refuses to run in production)'];
+            $steps[] = ['php artisan route:list --path=items', '(you should see the Blade item pages)'];
+
+            if ($this->ownsAuthScaffolding) {
+                $steps[] = [
+                    'Point your existing sign-in flow at /dashboard',
+                    '(the scaffold reuses your login routes; it defined none of its own)',
+                ];
+            } else {
+                $steps[] = ['Visit /login', '(then /dashboard and /items)'];
+            }
+
+            $steps[] = [
+                'Set SESSION_SECURE_COOKIE=true in production',
+                '(A04/A07 — a session cookie sent over http is a session anyone on the path can take)',
+            ];
+        }
+
+        $steps[] = ['php artisan test', '(the scaffolded feature and unit tests)'];
+        $steps[] = ['composer audit --locked', '(OWASP A03 — wire this into CI)'];
+
+        return $steps;
     }
 }

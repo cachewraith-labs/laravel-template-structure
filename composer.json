@@ -1,6 +1,6 @@
 {
     "name": "cachewraith/laravel-template-structure",
-    "description": "Installer-style Laravel package that scaffolds a clean, scalable, OOAD-based, OWASP-hardened, versioned-API architecture — layers, policies, Docker, docs and tests — into any Laravel 10, 11, 12 or 13 application.",
+    "description": "Installer-style Laravel package that scaffolds a clean, scalable, OOAD-based, OWASP-hardened architecture — layered services, repositories and policies behind a versioned JSON API, a server-rendered Blade UI, or both — into any Laravel 10, 11, 12 or 13 application.",
     "type": "library",
     "license": "MIT",
     "keywords": [
@@ -11,6 +11,9 @@
         "ooad",
         "owasp",
         "api-versioning",
+        "blade",
+        "web-ui",
+        "session-auth",
         "repository-pattern",
         "docker",
         "sanctum",
@@ -29,7 +32,7 @@
         "illuminate/support": "^10.0|^11.0|^12.0|^13.0"
     },
     "suggest": {
-        "laravel/sanctum": "Required by the scaffolded auth routes; they register only when it is installed."
+        "laravel/sanctum": "Required by the scaffolded API auth routes; they register only when it is installed. Not needed for a --stack=web install, which authenticates with sessions."
     },
     "autoload": {
         "psr-4": {

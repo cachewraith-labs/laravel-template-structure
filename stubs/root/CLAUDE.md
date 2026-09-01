@@ -1,25 +1,33 @@
 # Architecture, security and design conventions
 
 House rules for Claude Code working in this repository. Read `docs/ARCHITECTURE.md`
-before making a structural change.
+before making a structural change, and `docs/WEB.md` before touching a Blade
+template or a web controller.
 
 ## What this project is
 
-A versioned JSON API on Laravel, laid out in layers. The layout is not
-decoration — each rule below has a specific failure it prevents.
+A layered Laravel application with up to two front doors: a versioned JSON API
+and a server-rendered Blade UI. Which of them exist here is visible from the
+directories — `app/Http/Controllers/Api/` and/or `app/Http/Controllers/Web/`.
+Check before assuming; do not scaffold the missing one uninvited.
+
+The layout is not decoration — each rule below has a specific failure it
+prevents.
 
 ## Where code goes
 
 | The change | The file |
 | --- | --- |
-| A new endpoint | `routes/api_v{n}.php` → `app/Http/Controllers/Api/V{n}/` |
-| What a valid payload looks like | `app/Http/Requests/V{n}/` |
-| What the client receives | `app/Http/Resources/V{n}/` |
-| "When X happens, do A then B, and log it" | `app/Services/` |
-| A query | `app/Repositories/` (behind its `Contracts/` interface) |
-| "May this caller do this?" | `app/Policies/` |
+| A new API endpoint | `routes/api_v{n}.php` → `app/Http/Controllers/Api/V{n}/` |
+| A new page | `routes/web_ui.php` → `app/Http/Controllers/Web/` |
+| What a valid payload looks like | `app/Http/Requests/V{n}/` (API) or `app/Http/Requests/Web/` |
+| What the client receives | `app/Http/Resources/V{n}/` (API) or `resources/views/` |
+| "When X happens, do A then B, and log it" | `app/Services/` — **shared by both doors** |
+| A query | `app/Repositories/` behind its `Contracts/` interface — **shared** |
+| "May this caller do this?" | `app/Policies/` — **shared** |
 | A schema change | a **new** file in `database/migrations/` |
-| A cross-cutting response concern | `app/Traits/ApiResponse.php` |
+| A cross-cutting JSON response concern | `app/Traits/ApiResponse.php` |
+| A conversion both doors need | `app/Support/` |
 
 ## Rules
 
@@ -36,6 +44,30 @@ names a concrete class.
 breaking change is a new route file plus new classes in `V{n+1}` — and only for
 the classes whose contract actually changed. A `V2` directory that mirrors `V1`
 file-for-file is duplication, not versioning.
+
+**The web front door is not versioned, and does not reuse `V{n}` classes.** A
+version number is a contract with clients you cannot redeploy; a browser gets
+the HTML you shipped it. `app/Http/Requests/Web/` deliberately duplicates the
+rules in `app/Http/Requests/V1/` — same rules today, different lifecycles.
+Reaching into `V1` from a web controller welds the UI to a frozen contract.
+
+**Both doors share every layer below the controller.** A policy, service or
+repository is never duplicated per transport. If the API and the web UI need
+different *rules* for the same action, the rule is in the wrong layer — move
+it, do not fork it. Only the controller, the form request, the output and the
+routes are legitimately per transport.
+
+**In Blade: never `{!! !!}`.** Every interpolation is `{{ }}`, which escapes.
+There is no raw echo in this codebase; adding one is a decision to review, not
+a formatting choice. `@can` hides a control — it is never the only check, and
+every one has a real policy call behind it in the controller or form request.
+Every state-changing action is a POST/DELETE with `@csrf`; a `GET` that changes
+state is reachable from an `<img>` tag on any other site.
+
+**No inline JavaScript in a template.** The web CSP is `script-src 'self'` with
+no `'unsafe-inline'`. An `onclick=` or inline `<script>` would require
+loosening it for the whole page, which is what stops an injected script from
+running. Put scripts in a file.
 
 **Never edit a migration that has run.** Write another one.
 
@@ -98,11 +130,17 @@ hand still matters even when it maps to none of the ten.
   hash somewhere else, and never log a hash.
 - **A05** — Eloquent and the query builder only. No `DB::raw`, `whereRaw` or
   concatenated SQL.
+- **A05** — in Blade, `{{ }}` only. The web CSP has no `'unsafe-inline'`, which
+  is what keeps an injected script inert; do not weaken it.
 - **A06** — every route carries a `ratelimit.api` bucket; pagination is clamped
-  by `ApiResponse::perPage`.
+  by `ApiResponse::perPage` on the API and fixed from config on the web.
+- **A07** — session auth regenerates the id on sign-in and invalidates the
+  session and rotates the CSRF token on sign-out. Sign-in failures are
+  indistinguishable and timing-equalised.
 - **A09** — log identifiers, actor id and IP. Never a password, token, hash or
   full payload.
-- **A10** — errors go through `App\Exceptions\Handler` and fail closed.
+- **A10** — errors go through `App\Exceptions\Handler` and fail closed. Error
+  views touch no session and no data.
 
 ## Design patterns: choose deliberately
 
@@ -155,17 +193,20 @@ Rules
 ### Patterns already in play here
 
 Repository (`app/Repositories`), Strategy selected by route parameter
-(`RateLimitApi` buckets), Decorator (`SecurityHeaders` middleware), Chain of
-Responsibility collapsed into a `match` (`App\Exceptions\Handler`), and a mixin
-for the response envelope (`App\Traits\ApiResponse`). Match this vocabulary
-before introducing a new one.
+(`RateLimitApi` buckets) and by request (`SecurityHeaders` header profiles),
+Decorator (`SecurityHeaders` as middleware), Chain of Responsibility collapsed
+into a `match` (`App\Exceptions\Handler`), Template Method in Blade
+(`layouts/app.blade.php` fixing the document, `@yield` as the steps), and a
+mixin for the response envelope (`App\Traits\ApiResponse`). Match this
+vocabulary before introducing a new one.
 
 ## Commands
 
 ```bash
 php artisan migrate                     # apply schema changes
 php artisan db:seed --class=UserSeeder  # local demo data (refuses in production)
-php artisan route:list --path=api       # verify the versioned routes
+php artisan route:list --path=api       # verify the versioned API routes
+php artisan route:list --path=items     # verify the Blade pages
 php artisan test                        # the suite
 composer audit --locked                 # A03 — dependency advisories
 ```
@@ -173,5 +214,13 @@ composer audit --locked                 # A03 — dependency advisories
 ## The Item slice
 
 `Item` is a complete reference vertical — model, migration, factory, policy,
-requests, resources in two versions, service, repository, feature test, unit
-test. Copy it for a new aggregate, then delete it. Nothing else depends on it.
+requests, resources in two API versions, service, repository, feature test,
+unit test, and where the web door exists, a Blade controller, templates and
+their own feature test. Copy it for a new aggregate, then delete it. Nothing
+else depends on it.
+
+Where both doors exist, read `app/Http/Controllers/Api/V1/ItemController.php`
+and `app/Http/Controllers/Web/ItemController.php` side by side before adding a
+controller of your own. They are the same seven decisions; everything that
+differs between them is transport, and everything that does not is shared on
+purpose.

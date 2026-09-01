@@ -1,0 +1,225 @@
+/*
+ * cachewraith/laravel-template-structure — scaffold stylesheet.
+ *
+ * Self-hosted and dependency-free on purpose. No npm, no Vite, no CDN: the
+ * pages work the moment `php artisan cachewraith:install` finishes, and the
+ * Content-Security-Policy for web routes stays `style-src 'self'` with no
+ * 'unsafe-inline' and no third-party origin to trust (OWASP A02/A03).
+ *
+ * This is scaffolding, not a design system. Replace it — or delete it and
+ * point resources/views/layouts/app.blade.php at your own build output.
+ * Nothing in the PHP depends on these class names.
+ */
+
+:root {
+    --bg: #f7f7f8;
+    --surface: #ffffff;
+    --border: #e2e2e6;
+    --text: #1c1c1f;
+    --muted: #6b6b75;
+    --accent: #2f5bd7;
+    --accent-text: #ffffff;
+    --danger: #b32020;
+    --ok-bg: #e8f5ec;
+    --ok-border: #96ccaa;
+    --err-bg: #fdecec;
+    --err-border: #e9a9a9;
+    --radius: 8px;
+    --shell: 64rem;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #16161a;
+        --surface: #1f1f25;
+        --border: #33333c;
+        --text: #ececf0;
+        --muted: #9a9aa6;
+        --accent: #7d9bff;
+        --accent-text: #10131f;
+        --danger: #ff8484;
+        --ok-bg: #17301f;
+        --ok-border: #2f6b45;
+        --err-bg: #331a1a;
+        --err-border: #7a3434;
+    }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-text-size-adjust: 100%;
+}
+
+.shell { width: 100%; max-width: var(--shell); margin: 0 auto; padding: 0 1.25rem; }
+
+/* --- accessibility ---------------------------------------------------- */
+
+.sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+.skip-link {
+    position: absolute; left: -9999px; top: 0; z-index: 10;
+    background: var(--accent); color: var(--accent-text);
+    padding: 0.6rem 1rem; border-radius: 0 0 var(--radius) 0;
+}
+.skip-link:focus { left: 0; }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* --- chrome ----------------------------------------------------------- */
+
+.masthead { background: var(--surface); border-bottom: 1px solid var(--border); }
+
+.masthead-inner {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 1rem; flex-wrap: wrap; padding-block: 0.9rem;
+}
+
+.brand { font-weight: 650; font-size: 1.05rem; color: var(--text); text-decoration: none; }
+
+.nav { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.nav a { color: var(--muted); text-decoration: none; }
+.nav a:hover, .nav a.is-current { color: var(--text); }
+.nav .who { color: var(--muted); font-size: 0.9rem; }
+
+main.shell { padding-block: 2rem 3rem; }
+
+.footer { border-top: 1px solid var(--border); color: var(--muted); font-size: 0.85rem; }
+.footer p { margin: 0; padding-block: 1.25rem; }
+
+/* --- headings and text ------------------------------------------------ */
+
+h1 { font-size: 1.55rem; margin: 0 0 1rem; letter-spacing: -0.01em; }
+h2 { font-size: 1.1rem; margin: 0; }
+.lede { color: var(--muted); margin-top: -0.4rem; }
+.muted { color: var(--muted); }
+.hint { color: var(--muted); font-size: 0.85rem; margin: 0.4rem 0 0; }
+.prose { white-space: pre-line; }
+
+.page-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 1rem; flex-wrap: wrap; margin-bottom: 1.25rem;
+}
+.page-head h1 { margin: 0; }
+
+/* --- surfaces --------------------------------------------------------- */
+
+.card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 1.5rem; margin-bottom: 1.5rem;
+}
+.card-narrow { max-width: 34rem; margin-inline: auto; }
+.card-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 1rem; margin-bottom: 1rem;
+}
+
+.row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 1rem; padding: 0.65rem 0; border-top: 1px solid var(--border);
+}
+.row:first-of-type { border-top: 0; }
+.row a { color: var(--text); }
+
+/* --- alerts ----------------------------------------------------------- */
+
+.alert {
+    border: 1px solid; border-radius: var(--radius);
+    padding: 0.85rem 1rem; margin-bottom: 1.25rem;
+}
+.alert-title { margin: 0 0 0.4rem; font-weight: 600; }
+.alert ul { margin: 0; padding-left: 1.1rem; }
+.alert-success { background: var(--ok-bg); border-color: var(--ok-border); }
+.alert-error { background: var(--err-bg); border-color: var(--err-border); }
+
+.field-error { color: var(--danger); font-size: 0.85rem; margin: 0.35rem 0 0; }
+
+/* --- forms ------------------------------------------------------------ */
+
+.field { margin-bottom: 1.1rem; }
+.field label { display: block; font-weight: 550; margin-bottom: 0.35rem; }
+.field-inline { display: flex; align-items: center; gap: 0.5rem; }
+.field-inline label { margin: 0; font-weight: 400; }
+
+input[type="text"], input[type="email"], input[type="password"], textarea, select {
+    width: 100%; padding: 0.55rem 0.7rem; font: inherit; color: var(--text);
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+input[type="checkbox"] { width: auto; }
+textarea { resize: vertical; }
+
+.filters {
+    display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+    margin-bottom: 1.25rem;
+}
+.filters label { color: var(--muted); }
+.filters select { width: auto; min-width: 10rem; }
+
+.form-actions { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.inline-form { display: inline; margin: 0; }
+
+/* --- buttons ---------------------------------------------------------- */
+
+.btn {
+    display: inline-block; padding: 0.5rem 0.95rem; font: inherit;
+    color: var(--text); background: var(--surface);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    text-decoration: none; cursor: pointer;
+}
+.btn:hover { border-color: var(--muted); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.btn-danger { color: var(--danger); border-color: var(--danger); background: transparent; }
+.btn-link {
+    background: none; border: 0; padding: 0; color: var(--muted);
+    text-decoration: underline; cursor: pointer;
+}
+.btn-link:hover { color: var(--text); }
+
+/* --- tables ----------------------------------------------------------- */
+
+.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+table { width: 100%; border-collapse: collapse; }
+caption { text-align: left; }
+th, td { text-align: left; padding: 0.7rem 1rem; border-bottom: 1px solid var(--border); }
+thead th { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+tbody tr:last-child th, tbody tr:last-child td { border-bottom: 0; }
+td.numeric { font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.actions { text-align: right; white-space: nowrap; }
+
+.detail { display: grid; grid-template-columns: minmax(8rem, max-content) 1fr; gap: 0.6rem 1.5rem; margin: 0; }
+.detail dt { color: var(--muted); }
+.detail dd { margin: 0; }
+
+/* --- badges ----------------------------------------------------------- */
+
+.badge {
+    display: inline-block; padding: 0.15rem 0.55rem; border-radius: 999px;
+    border: 1px solid var(--border); font-size: 0.78rem; text-transform: capitalize;
+}
+.badge-draft { color: var(--muted); }
+.badge-published { color: #1c7a45; border-color: #79c39a; }
+.badge-archived { color: var(--muted); background: var(--bg); text-decoration: line-through; }
+
+/* --- pagination ------------------------------------------------------- */
+
+.pagination { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-top: 1.25rem; }
+.page {
+    padding: 0.35rem 0.7rem; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--surface);
+    color: var(--text); text-decoration: none; font-size: 0.9rem;
+}
+.page.is-current { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.page.is-disabled { color: var(--muted); opacity: 0.6; }
+
+/* --- error pages ------------------------------------------------------ */
+
+.error-page { text-align: center; margin-top: 4rem; }
+.error-code { font-size: 3rem; font-weight: 700; color: var(--muted); margin: 0 0 0.25rem; letter-spacing: -0.02em; }
