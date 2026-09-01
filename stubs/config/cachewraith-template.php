@@ -9,8 +9,8 @@ return [
     | Security headers
     |--------------------------------------------------------------------------
     |
-    | Master switch for App\Http\Middleware\Security\SecurityHeaders. Leave this
-    | on. Turning it off removes the CSP, framing, MIME-sniffing and referrer
+    | Master switch for App\Http\Middleware\SecurityHeaders. Leave this on.
+    | Turning it off removes the CSP, framing, MIME-sniffing and referrer
     | protections (OWASP A02: Security Misconfiguration).
     |
     */
@@ -60,9 +60,8 @@ return [
     | Force HTTPS
     |--------------------------------------------------------------------------
     |
-    | Applied by App\Providers\SecurityServiceProvider via URL::forceScheme so
-    | that generated URLs never downgrade to http. Defaults to on outside of
-    | the local and testing environments.
+    | Applied in AppServiceProvider via URL::forceScheme so generated URLs
+    | never downgrade to http. Null means "on outside local and testing".
     |
     */
 
@@ -73,9 +72,9 @@ return [
     | Rate limiting
     |--------------------------------------------------------------------------
     |
-    | Registers the "api" limiter used by the api middleware group when the
-    | application has not defined one itself (OWASP A06 / A07). "login" is the
-    | tighter limiter intended for credential endpoints.
+    | Buckets read by App\Http\Middleware\RateLimitApi, selected per route:
+    | ->middleware('ratelimit.api') or ->middleware('ratelimit.api:login').
+    | Add a bucket here and name it from the route (OWASP A06 / A07).
     |
     */
 
@@ -91,10 +90,12 @@ return [
     | API versioning
     |--------------------------------------------------------------------------
     |
-    | Every file listed in "versions" is loaded from routes/api/{version}.php
-    | under the prefix "{api_version_prefix}/{version}" with the api middleware
-    | group. Adding v2 is: copy routes/api/v1.php to v2.php, add 'v2' below.
-    | Never edit a released version in place (Open/Closed).
+    | Every entry is loaded from routes/api_{version}.php under the prefix
+    | "{api_version_prefix}/{version}", with the api middleware group and the
+    | route-name prefix "{version}.".
+    |
+    | Adding v2 is: write routes/api_v2.php, add 'v2' below. Never edit a
+    | released version in place (Open/Closed).
     |
     */
 
@@ -107,8 +108,8 @@ return [
     | Pagination
     |--------------------------------------------------------------------------
     |
-    | max_per_page is enforced by the controllers so a client cannot ask for an
-    | unbounded result set (OWASP A06: Insecure Design).
+    | max_per_page is enforced by App\Traits\ApiResponse so a client cannot ask
+    | for an unbounded result set (OWASP A06: Insecure Design).
     |
     */
 
@@ -116,5 +117,17 @@ return [
         'per_page' => 15,
         'max_per_page' => 100,
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Currency
+    |--------------------------------------------------------------------------
+    |
+    | Reported alongside minor-unit amounts by the v2 resources. Prices are
+    | stored as integers; a float would accumulate rounding error.
+    |
+    */
+
+    'currency' => env('CACHEWRAITH_CURRENCY', 'USD'),
 
 ];

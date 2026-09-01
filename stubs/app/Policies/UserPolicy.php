@@ -44,7 +44,7 @@ final class UserPolicy
 
     /**
      * Registration is intentionally *not* open through this endpoint. Point a
-     * dedicated, rate-limited public route at a RegisterUserAction if you want
+     * dedicated, rate-limited public route at UserService::create if you want
      * self-service signup, and keep this admin-only path closed by default.
      */
     public function create(User $user): bool

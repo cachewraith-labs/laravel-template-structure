@@ -4,18 +4,16 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1;
 
-use App\DTOs\UserData;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Api\V1\StoreUserRequest;
-use App\Http\Requests\Api\V1\UpdateUserRequest;
-use App\Http\Resources\Api\V1\UserResource;
+use App\Http\Requests\V1\StoreUserRequest;
+use App\Http\Requests\V1\UpdateUserRequest;
+use App\Http\Resources\V1\UserResource;
 use App\Models\User;
 use App\Services\UserService;
+use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Gate;
-use Symfony\Component\HttpFoundation\Response;
 
 /**
  * v1 user endpoints.
@@ -35,40 +33,40 @@ use Symfony\Component\HttpFoundation\Response;
  */
 final class UserController extends Controller
 {
+    use ApiResponse;
+
     public function __construct(private readonly UserService $users)
     {
     }
 
-    public function index(Request $request): AnonymousResourceCollection
+    public function index(Request $request): JsonResponse
     {
         Gate::authorize('viewAny', User::class);
 
-        return UserResource::collection(
-            $this->users->paginate($this->perPage($request))
-        );
+        $users = $this->users->paginate($this->perPage($request->integer('per_page') ?: null));
+
+        return $this->respondPaginated(UserResource::collection($users), $users);
     }
 
     public function store(StoreUserRequest $request): JsonResponse
     {
         // Authorised by StoreUserRequest::authorize() before we get here.
         $user = $this->users->create(
-            UserData::fromRequest($request),
+            $request->validated(),
             $request->user()?->getKey(),
         );
 
-        return UserResource::make($user)
-            ->response()
-            ->setStatusCode(Response::HTTP_CREATED);
+        return $this->respondCreated(UserResource::make($user), 'User created.');
     }
 
-    public function show(User $user): UserResource
+    public function show(Request $request, User $user): JsonResponse
     {
         Gate::authorize('view', $user);
 
-        return UserResource::make($user);
+        return $this->respondSuccess(UserResource::make($user));
     }
 
-    public function update(UpdateUserRequest $request, User $user): UserResource
+    public function update(UpdateUserRequest $request, User $user): JsonResponse
     {
         // Only validated keys are forwarded — never $request->all() (A01).
         $updated = $this->users->update(
@@ -77,7 +75,7 @@ final class UserController extends Controller
             $request->user()?->getKey(),
         );
 
-        return UserResource::make($updated);
+        return $this->respondSuccess(UserResource::make($updated), 'User updated.');
     }
 
     public function destroy(Request $request, User $user): JsonResponse
@@ -86,23 +84,6 @@ final class UserController extends Controller
 
         $this->users->delete($user, $request->user()?->getKey());
 
-        return response()->json([
-            'success' => true,
-            'message' => 'User deleted.',
-            'errors' => null,
-            'code' => Response::HTTP_OK,
-        ]);
-    }
-
-    /**
-     * Clamp client-controlled pagination (OWASP A06: a request for
-     * ?per_page=1000000 is a cheap denial-of-service otherwise).
-     */
-    private function perPage(Request $request): int
-    {
-        $default = (int) config('cachewraith-template.pagination.per_page', 15);
-        $max = (int) config('cachewraith-template.pagination.max_per_page', 100);
-
-        return max(1, min($request->integer('per_page', $default), $max));
+        return $this->respondSuccess(null, 'User deleted.');
     }
 }

@@ -1,0 +1,35 @@
+# ---------------------------------------------------------------------------
+# Development overlay. Use it explicitly:
+#
+#     docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#
+# It bind-mounts the source, turns opcache off, enables Xdebug and publishes
+# the database and cache ports for a local client. Never apply this file to a
+# deployed environment.
+# ---------------------------------------------------------------------------
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      PHP_IDE_CONFIG: serverName=app
+    volumes:
+      # Live source, so an edit is visible without a rebuild.
+      - .:/var/www/html
+      - app-storage:/var/www/html/storage
+    extra_hosts:
+      # Lets Xdebug reach the IDE on the host from Linux as well as Docker
+      # Desktop.
+      - "host.docker.internal:host-gateway"
+
+  database:
+    ports:
+      - "${DB_PORT:-5432}:5432"
+
+  cache:
+    ports:
+      - "${REDIS_PORT:-6379}:6379"

@@ -1,0 +1,73 @@
+# ---------------------------------------------------------------------------
+# Production-shaped stack: nginx -> php-fpm -> postgres, plus redis.
+#
+# Secrets come from the environment, never from this file (OWASP A04). Copy
+# .env.example to .env and fill it in; .env is gitignored and must stay so.
+# ---------------------------------------------------------------------------
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+    depends_on:
+      database:
+        condition: service_healthy
+      cache:
+        condition: service_started
+    volumes:
+      # Only the writable trees are volumes. The code stays immutable in the
+      # image, so a runtime bug cannot rewrite it (OWASP A08).
+      - app-storage:/var/www/html/storage
+    networks: [backend]
+
+  web:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on: [app]
+    ports:
+      - "${APP_PORT:-8080}:80"
+    volumes:
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    networks: [backend]
+
+  database:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-app}
+      POSTGRES_USER: ${DB_USERNAME:-app}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-app} -d ${DB_DATABASE:-app}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # No published port: the database is reachable only from the backend
+    # network. Exposing 5432 to the host is how development databases end up
+    # on the internet (OWASP A02).
+    networks: [backend]
+
+  cache:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set}"]
+    volumes:
+      - cache-data:/data
+    networks: [backend]
+
+volumes:
+  app-storage:
+  db-data:
+  cache-data:
+
+networks:
+  backend:
+    driver: bridge

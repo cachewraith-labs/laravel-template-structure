@@ -17,8 +17,8 @@ use Illuminate\Support\ServiceProvider;
  *
  *     $this->app->bind(UserRepositoryInterface::class, InMemoryUserRepository::class);
  *
- * php artisan cachewraith:install appends new bindings directly below the marker
- * comment, so keep it in place if you want that to keep working.
+ * php artisan cachewraith:install appends new bindings directly below the
+ * marker comment, so keep it in place if you want that to keep working.
  */
 final class RepositoryServiceProvider extends ServiceProvider
 {
@@ -29,7 +29,8 @@ final class RepositoryServiceProvider extends ServiceProvider
      */
     public array $bindings = [
         // cachewraith-template:bindings
-        \App\Repositories\Contracts\UserRepositoryInterface::class => \App\Repositories\Eloquent\EloquentUserRepository::class,
+        \App\Repositories\Contracts\UserRepositoryInterface::class => \App\Repositories\UserRepository::class,
+        \App\Repositories\Contracts\ItemRepositoryInterface::class => \App\Repositories\ItemRepository::class,
     ];
 
     public function register(): void

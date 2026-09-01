@@ -50,9 +50,10 @@ final class LaravelTemplateStructureServiceProvider extends ServiceProvider
             InstallCommand::class,
         ]);
 
-        // Publish the raw stub tree so a team can customise the generated code
-        // before (or after) running php artisan cachewraith:install. The installer
-        // prefers these published stubs over the packaged ones when present.
+        // Opt-in customisation point. cachewraith:install reads the stub tree
+        // straight out of the package, so a normal install leaves no stubs/
+        // directory behind. Publish only if you want to edit the generated code
+        // before it is copied — the installer then prefers the published tree.
         $this->publishes([
             static::packagePath('stubs') => base_path('stubs/cachewraith-template'),
         ], 'cachewraith-template-stubs');

@@ -13,8 +13,8 @@ use Illuminate\Support\Collection;
  *
  * Repository pattern. Two reasons it is here rather than calling Eloquent from
  * a service: the persistence mechanism becomes swappable (Dependency
- * Inversion — nothing outside App\Repositories\Eloquent may name a query
- * builder), and it becomes trivially fakeable in tests.
+ * Inversion — nothing outside App\Repositories may name a query builder), and
+ * it becomes trivially fakeable in tests.
  *
  * Interface Segregation: one interface per aggregate root. Do not grow this
  * into a generic CrudRepositoryInterface shared by every model — consumers

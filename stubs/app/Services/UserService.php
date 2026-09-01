@@ -4,37 +4,39 @@ declare(strict_types=1);
 
 namespace App\Services;
 
-use App\Actions\CreateUserAction;
-use App\DTOs\UserData;
 use App\Models\User;
 use App\Repositories\Contracts\UserRepositoryInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Application service for the User aggregate.
+ * Business logic for the User aggregate.
  *
- * The orchestration layer, and the only layer allowed to know the sequence of
- * a use case: it composes repositories and actions, records the audit trail,
- * and returns domain objects. Controllers stay thin because everything here is
+ * The only layer allowed to know the sequence of a use case: it drives the
+ * repository, applies the rules that are not about persistence, and records
+ * the audit trail. Controllers stay thin because everything here is
  * transport-agnostic — the same method serves an HTTP controller, an Artisan
  * command and a queued job.
  *
- * Dependency Inversion: this class depends on
- * App\Repositories\Contracts\UserRepositoryInterface, never on Eloquent. The
- * concrete binding lives in App\Providers\RepositoryServiceProvider.
+ * Dependency Inversion: this class depends on UserRepositoryInterface, never
+ * on Eloquent. The concrete binding lives in RepositoryServiceProvider, which
+ * is what makes the persistence layer swappable and fakeable.
  *
- * OWASP A09 (Logging & Alerting Failures): creation and deletion are logged
- * with the acting identity and source IP. Log identifiers only — never a
- * password, token, hash or full request payload.
+ * OWASP A04 (Cryptographic Failures): hashing happens here, on the single
+ * write path, so no caller can persist a plaintext password by forgetting a
+ * step. Hash::make uses the application's configured driver (bcrypt or
+ * argon2id) — never md5/sha1 or any other fast hash for credentials.
+ *
+ * OWASP A09 (Logging & Alerting Failures): writes are logged with the acting
+ * identity and source IP. Log identifiers only — never a password, token,
+ * hash or full request payload.
  */
 final class UserService
 {
-    public function __construct(
-        private readonly UserRepositoryInterface $users,
-        private readonly CreateUserAction $createUser,
-    ) {
+    public function __construct(private readonly UserRepositoryInterface $users)
+    {
     }
 
     /**
@@ -50,9 +52,19 @@ final class UserService
         return $this->users->findById($id);
     }
 
-    public function create(UserData $data, ?int $actorId = null): User
+    public function findByEmail(string $email): ?User
     {
-        $user = $this->createUser->execute($data);
+        return $this->users->findByEmail($email);
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes  Already validated by a FormRequest.
+     */
+    public function create(array $attributes, ?int $actorId = null): User
+    {
+        $attributes = $this->hashPassword($attributes);
+
+        $user = DB::transaction(fn (): User => $this->users->create($attributes));
 
         Log::info('user.created', [
             'user_id' => $user->getKey(),
@@ -64,27 +76,27 @@ final class UserService
     }
 
     /**
-     * @param  array<string, mixed>  $attributes
+     * @param  array<string, mixed>  $attributes  Already validated by a FormRequest.
      */
     public function update(User $user, array $attributes, ?int $actorId = null): User
     {
-        // A04: a password may only ever be written hashed, whichever path
-        // reaches the repository.
-        if (isset($attributes['password'])) {
-            $attributes['password'] = Hash::make((string) $attributes['password']);
+        $hadPassword = array_key_exists('password', $attributes);
+        $attributes = $this->hashPassword($attributes);
 
+        $updated = DB::transaction(fn (): User => $this->users->update($user, $attributes));
+
+        if ($hadPassword) {
             Log::info('user.password_changed', [
-                'user_id' => $user->getKey(),
+                'user_id' => $updated->getKey(),
                 'actor_id' => $actorId,
                 'ip' => request()->ip(),
             ]);
         }
 
-        $updated = $this->users->update($user, $attributes);
-
         Log::info('user.updated', [
             'user_id' => $updated->getKey(),
             'actor_id' => $actorId,
+            // Keys only. The values are the payload we are careful not to log.
             'changed' => array_keys($attributes),
             'ip' => request()->ip(),
         ]);
@@ -104,5 +116,21 @@ final class UserService
         ]);
 
         return $deleted;
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     * @return array<string, mixed>
+     */
+    private function hashPassword(array $attributes): array
+    {
+        if (isset($attributes['password'])) {
+            $attributes['password'] = Hash::make((string) $attributes['password']);
+        }
+
+        // Never persist the confirmation field, and never let it reach a log.
+        unset($attributes['password_confirmation']);
+
+        return $attributes;
     }
 }

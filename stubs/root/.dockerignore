@@ -1,0 +1,41 @@
+# Keep the build context small and, more importantly, keep secrets and local
+# state out of the image (OWASP A04). Anything listed here is never COPYed,
+# never cached in a layer, and never recoverable from a published image.
+
+.env
+.env.*
+!.env.example
+
+.git
+.gitignore
+.github
+
+node_modules
+vendor
+
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+storage/framework/testing/*
+!storage/**/.gitignore
+
+bootstrap/cache/*
+!bootstrap/cache/.gitignore
+
+public/hot
+public/storage
+
+.phpunit.result.cache
+.phpunit.cache
+coverage
+tests
+
+docker-compose*.yml
+Dockerfile*
+README.md
+docs
+
+.idea
+.vscode
+.DS_Store
